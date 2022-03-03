@@ -10,9 +10,8 @@ import pycocotools
 
 from torch.utils.data.dataset import Dataset
 
-BODY_PARTS_KPT_IDS = [[1, 8], [8, 9], [9, 10], [1, 11], [11, 12], [12, 13], [1, 2], [2, 3], [3, 4], [2, 16],
-                      [1, 5], [5, 6], [6, 7], [5, 17], [1, 0], [0, 14], [0, 15], [14, 16], [15, 17]]
-
+BODY_PARTS_KPT_IDS = [[1,0],[1,2],[1,6],[1,7],[2,3],[3,5],[3,4]]
+KEYPOINT_NUM = 8
 
 def get_mask(segmentations, mask):
     for segmentation in segmentations:
@@ -70,7 +69,7 @@ class CocoTrainDataset(Dataset):
         return len(self._labels)
 
     def _generate_keypoint_maps(self, sample):
-        n_keypoints = 18
+        n_keypoints = KEYPOINT_NUM
         n_rows, n_cols, _ = sample['image'].shape
         keypoint_maps = np.zeros(shape=(n_keypoints + 1,
                                         n_rows // self._stride, n_cols // self._stride), dtype=np.float32)  # +1 for bg
@@ -81,7 +80,10 @@ class CocoTrainDataset(Dataset):
             if keypoint[2] <= 1:
                 self._add_gaussian(keypoint_maps[keypoint_idx], keypoint[0], keypoint[1], self._stride, self._sigma)
             for another_annotation in label['processed_other_annotations']:
-                keypoint = another_annotation['keypoints'][keypoint_idx]
+                try:
+                    keypoint = another_annotation['keypoints'][keypoint_idx]
+                except Exception as e:
+                    raise
                 if keypoint[2] <= 1:
                     self._add_gaussian(keypoint_maps[keypoint_idx], keypoint[0], keypoint[1], self._stride, self._sigma)
         keypoint_maps[-1] = 1 - keypoint_maps.max(axis=0)
@@ -124,8 +126,12 @@ class CocoTrainDataset(Dataset):
                               keypoint_a[0], keypoint_a[1], keypoint_b[0], keypoint_b[1],
                               self._stride, self._paf_thickness)
             for another_annotation in label['processed_other_annotations']:
-                keypoint_a = another_annotation['keypoints'][BODY_PARTS_KPT_IDS[paf_idx][0]]
-                keypoint_b = another_annotation['keypoints'][BODY_PARTS_KPT_IDS[paf_idx][1]]
+                try:
+                    keypoint_a = another_annotation['keypoints'][BODY_PARTS_KPT_IDS[paf_idx][0]]
+                    keypoint_b = another_annotation['keypoints'][BODY_PARTS_KPT_IDS[paf_idx][1]]
+                except Exception as e:
+                    print(another_annotation)
+                    raise
                 if keypoint_a[2] <= 1 and keypoint_b[2] <= 1:
                     self._set_paf(paf_maps[paf_idx * 2:paf_idx * 2 + 2],
                                   keypoint_a[0], keypoint_a[1], keypoint_b[0], keypoint_b[1],

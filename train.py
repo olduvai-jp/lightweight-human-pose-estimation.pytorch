@@ -15,6 +15,11 @@ from models.with_mobilenet import PoseEstimationWithMobileNet
 from modules.loss import l2_loss
 from modules.load_state import load_state, load_from_mobilenet
 from val import evaluate
+import time
+
+KEYPOINT_NUM = 8
+PAF_NUM = 7
+EPOCH_NUM = 2800
 
 cv2.setNumThreads(0)
 cv2.ocl.setUseOpenCL(False)  # To prevent freeze of DataLoader
@@ -23,7 +28,7 @@ cv2.ocl.setUseOpenCL(False)  # To prevent freeze of DataLoader
 def train(prepared_train_labels, train_images_folder, num_refinement_stages, base_lr, batch_size, batches_per_iter,
           num_workers, checkpoint_path, weights_only, from_mobilenet, checkpoints_folder, log_after,
           val_labels, val_images_folder, val_output_name, checkpoint_after, val_after):
-    net = PoseEstimationWithMobileNet(num_refinement_stages)
+    net = PoseEstimationWithMobileNet(num_refinement_stages, num_heatmaps=KEYPOINT_NUM+1, num_pafs=PAF_NUM*2)
 
     stride = 8
     sigma = 7
@@ -73,7 +78,9 @@ def train(prepared_train_labels, train_images_folder, num_refinement_stages, bas
 
     net = DataParallel(net).cuda()
     net.train()
-    for epochId in range(current_epoch, 280):
+    start_time = time.perf_counter()
+    log_after_time = start_time
+    for epochId in range(current_epoch, EPOCH_NUM):
         scheduler.step()
         total_losses = [0, 0] * (num_refinement_stages + 1)  # heatmaps loss, paf loss per stage
         batch_per_iter_idx = 0
@@ -117,6 +124,9 @@ def train(prepared_train_labels, train_images_folder, num_refinement_stages, bas
                         loss_idx + 1, total_losses[loss_idx * 2] / log_after))
                 for loss_idx in range(len(total_losses)):
                     total_losses[loss_idx] = 0
+                tmp_time = time.perf_counter()
+                print(f"LogAfterTime:{((tmp_time - log_after_time)/60):.2f}[min]")
+                log_after_time = tmp_time
             if num_iter % checkpoint_after == 0:
                 snapshot_name = '{}/checkpoint_iter_{}.pth'.format(checkpoints_folder, num_iter)
                 torch.save({'state_dict': net.module.state_dict(),
@@ -125,6 +135,8 @@ def train(prepared_train_labels, train_images_folder, num_refinement_stages, bas
                             'iter': num_iter,
                             'current_epoch': epochId},
                            snapshot_name)
+                tmp_time = time.perf_counter()
+                print(f"TotalTime:{((tmp_time - start_time)/60):.2f}[min]")
             if num_iter % val_after == 0:
                 print('Validation...')
                 evaluate(val_labels, val_output_name, val_images_folder, net)
@@ -138,7 +150,7 @@ if __name__ == '__main__':
     parser.add_argument('--train-images-folder', type=str, required=True, help='path to COCO train images folder')
     parser.add_argument('--num-refinement-stages', type=int, default=1, help='number of refinement stages')
     parser.add_argument('--base-lr', type=float, default=4e-5, help='initial learning rate')
-    parser.add_argument('--batch-size', type=int, default=80, help='batch size')
+    parser.add_argument('--batch-size', type=int, default=20, help='batch size')
     parser.add_argument('--batches-per-iter', type=int, default=1, help='number of batches to accumulate gradient from')
     parser.add_argument('--num-workers', type=int, default=8, help='number of workers')
     parser.add_argument('--checkpoint-path', type=str, required=True, help='path to the checkpoint to continue training from')

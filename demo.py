@@ -10,6 +10,8 @@ from modules.load_state import load_state
 from modules.pose import Pose, track_poses
 from val import normalize, pad_width
 
+KEYPOINT_NUM = 8
+PAF_NUM = 7
 
 class ImageReader(object):
     def __init__(self, file_names):
@@ -88,6 +90,7 @@ def run_demo(net, image_provider, height_size, cpu, track, smooth):
     num_keypoints = Pose.num_kpts
     previous_poses = []
     delay = 1
+    output_count = 0
     for img in image_provider:
         orig_img = img.copy()
         heatmaps, pafs, scale, pad = infer_fast(net, img, height_size, stride, upsample_ratio, cpu)
@@ -110,7 +113,7 @@ def run_demo(net, image_provider, height_size, cpu, track, smooth):
                 if pose_entries[n][kpt_id] != -1.0:  # keypoint was found
                     pose_keypoints[kpt_id, 0] = int(all_keypoints[int(pose_entries[n][kpt_id]), 0])
                     pose_keypoints[kpt_id, 1] = int(all_keypoints[int(pose_entries[n][kpt_id]), 1])
-            pose = Pose(pose_keypoints, pose_entries[n][18])
+            pose = Pose(pose_keypoints, pose_entries[n][KEYPOINT_NUM])
             current_poses.append(pose)
 
         if track:
@@ -125,15 +128,9 @@ def run_demo(net, image_provider, height_size, cpu, track, smooth):
             if track:
                 cv2.putText(img, 'id: {}'.format(pose.id), (pose.bbox[0], pose.bbox[1] - 16),
                             cv2.FONT_HERSHEY_COMPLEX, 0.5, (0, 0, 255))
-        cv2.imshow('Lightweight Human Pose Estimation Python Demo', img)
-        key = cv2.waitKey(delay)
-        if key == 27:  # esc
-            return
-        elif key == 112:  # 'p'
-            if delay == 1:
-                delay = 0
-            else:
-                delay = 1
+        # docker上で動かすのでファイル出力に変更
+        cv2.imwrite(f"./output_{output_count:02}.jpg", img)
+        output_count = output_count + 1
 
 
 if __name__ == '__main__':
@@ -153,7 +150,7 @@ if __name__ == '__main__':
     if args.video == '' and args.images == '':
         raise ValueError('Either --video or --image has to be provided')
 
-    net = PoseEstimationWithMobileNet()
+    net = PoseEstimationWithMobileNet(num_heatmaps=KEYPOINT_NUM+1, num_pafs=PAF_NUM*2)
     checkpoint = torch.load(args.checkpoint_path, map_location='cpu')
     load_state(net, checkpoint)
 

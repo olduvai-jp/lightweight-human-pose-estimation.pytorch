@@ -5,6 +5,8 @@ import torch
 from models.with_mobilenet import PoseEstimationWithMobileNet
 from modules.load_state import load_state
 
+KEYPOINT_NUM = 8
+PAF_NUM = 7
 
 def convert_to_onnx(net, output_name):
     input = torch.randn(1, 3, 256, 456)
@@ -22,7 +24,7 @@ if __name__ == '__main__':
                         help='name of output model in ONNX format')
     args = parser.parse_args()
 
-    net = PoseEstimationWithMobileNet()
+    net = PoseEstimationWithMobileNet(num_heatmaps=KEYPOINT_NUM+1, num_pafs=PAF_NUM*2)
     checkpoint = torch.load(args.checkpoint_path)
     load_state(net, checkpoint)
 

@@ -4,15 +4,16 @@ import numpy as np
 from modules.keypoints import BODY_PARTS_KPT_IDS, BODY_PARTS_PAF_IDS
 from modules.one_euro_filter import OneEuroFilter
 
+KEYPOINT_NUM = 8
 
 class Pose:
-    num_kpts = 18
+    num_kpts = KEYPOINT_NUM
     kpt_names = ['nose', 'neck',
                  'r_sho', 'r_elb', 'r_wri', 'l_sho', 'l_elb', 'l_wri',
                  'r_hip', 'r_knee', 'r_ank', 'l_hip', 'l_knee', 'l_ank',
                  'r_eye', 'l_eye',
                  'r_ear', 'l_ear']
-    sigmas = np.array([.26, .79, .79, .72, .62, .79, .72, .62, 1.07, .87, .89, 1.07, .87, .89, .25, .25, .35, .35],
+    sigmas = np.array([.26, .79, .79, .72, .62, .79, .72, .62],
                       dtype=np.float32) / 10.0
     vars = (sigmas * 2) ** 2
     last_id = -1

@@ -13,6 +13,8 @@ from models.with_mobilenet import PoseEstimationWithMobileNet
 from modules.keypoints import extract_keypoints, group_keypoints
 from modules.load_state import load_state
 
+KEYPOINT_NUM = 8
+PAF_NUM = 7
 
 def run_coco_eval(gt_file_path, dt_file_path):
     annotation_type = 'keypoints'
@@ -82,8 +84,8 @@ def infer(net, img, scales, base_height, stride, pad_value=(0, 0, 0), img_mean=(
     normed_img = normalize(img, img_mean, img_scale)
     height, width, _ = normed_img.shape
     scales_ratios = [scale * base_height / float(height) for scale in scales]
-    avg_heatmaps = np.zeros((height, width, 19), dtype=np.float32)
-    avg_pafs = np.zeros((height, width, 38), dtype=np.float32)
+    avg_heatmaps = np.zeros((height, width, KEYPOINT_NUM+1), dtype=np.float32)
+    avg_pafs = np.zeros((height, width, PAF_NUM*2), dtype=np.float32)
 
     for ratio in scales_ratios:
         scaled_img = cv2.resize(normed_img, (0, 0), fx=ratio, fy=ratio, interpolation=cv2.INTER_CUBIC)
@@ -128,7 +130,7 @@ def evaluate(labels, output_name, images_folder, net, multiscale=False, visualiz
 
         total_keypoints_num = 0
         all_keypoints_by_type = []
-        for kpt_idx in range(18):  # 19th for bg
+        for kpt_idx in range(KEYPOINT_NUM):  # 19th for bg
             total_keypoints_num += extract_keypoints(avg_heatmaps[:, :, kpt_idx], all_keypoints_by_type, total_keypoints_num)
 
         pose_entries, all_keypoints = group_keypoints(all_keypoints_by_type, avg_pafs)
@@ -171,7 +173,7 @@ if __name__ == '__main__':
     parser.add_argument('--visualize', action='store_true', help='show keypoints')
     args = parser.parse_args()
 
-    net = PoseEstimationWithMobileNet()
+    net = PoseEstimationWithMobileNet(num_heatmaps=KEYPOINT_NUM+1, num_pafs=PAF_NUM*2)
     checkpoint = torch.load(args.checkpoint_path)
     load_state(net, checkpoint)
 

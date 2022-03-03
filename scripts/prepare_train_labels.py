@@ -58,7 +58,7 @@ def prepare_annotations(annotations_per_image, images_info, net_input_size):
             for other_annotation in annotations[0]:
                 if other_annotation == annotation:
                     continue
-
+                
                 prepared_other_annotation = {
                     'objpos': [other_annotation['bbox'][0] + other_annotation['bbox'][2] / 2,
                                other_annotation['bbox'][1] + other_annotation['bbox'][3] / 2],
@@ -98,6 +98,9 @@ if __name__ == '__main__':
 
     annotations_per_image_mapping = {}
     for annotation in data['annotations']:
+        num_keypoint = annotation.get('num_keypoints', None)
+        if num_keypoint is None:
+            continue
         if annotation['num_keypoints'] != 0 and not annotation['iscrowd']:
             if annotation['image_id'] not in annotations_per_image_mapping:
                 annotations_per_image_mapping[annotation['image_id']] = [[], []]
