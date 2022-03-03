@@ -1,43 +1,43 @@
-# Train on custom dataset
+# カスタムデータセットで学習
 
-It will require some :clock1:, but here is the guide from :zero: to :muscle:. In the end you will feel :shipit: :neckbeard: :godmode:, I guarantee that!
+これはいくらかの :clock1: が掛かります。しかしここに :zero: から :muscle: へのガイドがあります！ この記事の終わりにはあなたは :shipit: :neckbeard: :godmode: を感じますよ, 保証します!
 
-## Preface
+## 序文
 
-### What is `BODY_PARTS_KPT_IDS` and `BODY_PARTS_PAF_IDS`?
+### `BODY_PARTS_KPT_IDS` と `BODY_PARTS_PAF_IDS` とは何ですか?
 
-Both lists are related to grouping keypoints into person instances. Network predicts two tensors: the first with keypoint heatmaps, to localize all possible keypoints of each type (neck, left shoulder, right shoulder, left elbow, etc.) and the second with connections between keypoints of predefined type.
+どちらのリストも、キーポイントを人物インスタンスにグループ化することに関連している。1つ目はキーポイントのヒートマップで、各タイプの可能なキーポイント（首、左肩、右肩、左肘など）をすべて局所化し、2つ目は事前に定義されたタイプのキーポイント間の接続を予測します。
 
-From the heatmaps we can extract coordinates of all keypoints, which network was able to find. Now these keypoints need to be grouped into persons. It is very easy to do if only one person can be inside an image: beacuse we have already knew keypoints coordinates and their type, so all found keypoints belong to the desired person. Situation becomes harder if multiple persons may be present inside an image. What we can do in this case? For example, network finds two keypoints of right shoulder and only one neck. One neck keypoint is good, possibly can extract pose of one person. But there are two right shoulder keypoints. We know, that single pose contain at most one right shoulder. Which one we should choose? It is tricky, but let network help us.
+ヒートマップから、ネットワークが見つけることができたすべてのキーポイントの座標を抽出することができます。次に、これらのキーポイントを人物にグループ化する必要がある。なぜなら、我々はすでにキーポイントの座標とそのタイプを知っているので、見つかったキーポイントはすべて目的の人物に属しているからです。しかし、画像内に複数の人物が写っている場合、状況は難しくなります。この場合、どうすればよいのでしょうか？例えば、右肩のキーポイントが2つ、首のキーポイントが1つだけ見つかったとします。首のキーポイントは1つでよく、1人の人物のポーズを抽出できる可能性があります。しかし、右肩のキーポイントは2つある。我々は、1つのポーズには最大でも1つの右肩が含まれることを知っています。どちらを選ぶべきだろうか？難しいですが、ネットワークに助けてもらいましょう。
 
-To group keypoints into persons instances, network learns to predict connections between keypoints of each person. Like a bones of skeleton. So once we know, which keypoints are connected between each other, the full pose can be read, starting from the first keypoint and checking if it is connected with other keypoints. Once connections between the fist keypoint and its neighbouring keypoints are established, we continue to assemble keypoints into pose by exploring neighbouring keypoints and keypoints with which they are connected, and so on. Pairs of keypoint indices, between which network should predict connection, are exactly what is defined in [`BODY_PARTS_KPT_IDS`](https://github.com/Daniil-Osokin/lightweight-human-pose-estimation.pytorch/blob/master/modules/keypoints.py#L5-L6) list. Let's check the pose scheme image:
+キーポイントを人物のインスタンスにまとめるために、ネットワークは各人物のキーポイント間の接続を予測するように学習します。骨格の骨のようなもの。そのため、どのキーポイント同士がつながっているかがわかれば、最初のキーポイントから順に、他のキーポイントとつながっているかどうかを確認しながら、全ポーズを読み取ることができます。1つ目のキーポイントとその隣のキーポイントの接続が確立したら、隣のキーポイントとそのキーポイントが接続しているキーポイントを探索し、キーポイントをポーズに組み立てていく、ということを繰り返しています。ネットワークが接続を予測すべきキーポイントのインデックスのペアは、まさに [`BODY_PARTS_KPT_IDS`](https://github.com/Daniil-Osokin/lightweight-human-pose-estimation.pytorch/blob/master/modules/keypoints.py#L5-L6) リストで定義されているものです。それでは、ポーズスキームの画像を確認してみましょう。
 
 <p align="center">
   <img src="data/shake_it_off.jpg" />
 </p>
 
-You see, pair `[1, 5]` corresponds to connection between keypoints with indices `1` and `5`, which is neck and left shoulder. Pair `[14, 16]` corresponds to right eye and right ear keypoints. These pairs are defined (by you) before the training, because network needs to know, connection between which keypoints it should learn. [`BODY_PARTS_PAF_IDS`](https://github.com/Daniil-Osokin/lightweight-human-pose-estimation.pytorch/blob/master/modules/keypoints.py#L7-L8) list defines indices of network output channels which encodes connection between corresponding keypoints pair. PAF stands for part affinity field, it is a term from the [original paper](https://arxiv.org/pdf/1611.08050.pdf), which describes connection between keypoints pair.
+`[1, 5]`のペアは、インデックス `1` と `5` のキーポイント間の接続、つまり首と左肩に相当することがわかります。ペア `[14, 16]` は、右目と右耳のキーポイントに対応します。これらのペアは、ネットワークがどのキーポイント間の接続を学習すべきかを知る必要があるため、学習の前に（あなたによって）定義されます。[`BODY_PARTS_PAF_IDS`](https://github.com/Daniil-Osokin/lightweight-human-pose-estimation.pytorch/blob/master/modules/keypoints.py#L7-L8) リストには、対応するキーポイントのペア間の接続をエンコードするネットワーク出力チャネルのインデックスが定義されています。PAF は part affinity field の略で、[original paper](https://arxiv.org/pdf/1611.08050.pdf) にある用語で、キーポイントのペア間の接続を記述しています。
 
-### How to choose pairs of keypoints to connect?
+### 接続するキーポイントのペアをどのように選択するか？
 
-One may select all-to-all connection scheme, thus having `(number keypoints) * (number keypoints - 1)` keypoint pairs (keypoint connection with itself is skipped as useless for grouping into instances purpose). If number of keypoints is 18, and all-to-all connection scheme is used, then network needs to learn `18 * 17 = 306` connections between keypoints. Large number of connections makes network more complex and slower, but gives more accurate grouping: because each keypoint is connected to any other keypoint of this person, and, for example, if network fails to detect connection between right elbow and right shoulder, we may group right elbow into pose by checking connection between right elbow and neck or with other keypoints.
+全てのポイントを接続するとします。この場合、「`(キーポイント数)*(キーポイント数-1)`」のキーポイントペアを持つことになります（キーポイント自身との接続はインスタンスにグループ化するために不要なのでスキップされます）。仮にキーポイント数が18で全対全接続方式を採用した場合、ネットワークは「`18 * 17 = 306`」個のキーポイント間の接続を学習する必要があります。例えば、右肘と右肩の接続を検出できなかった場合、右肘と首の接続や他のキーポイントとの接続を確認することで、右肘をポーズにグループ化することができるのです。
 
-Actual number of keypoints pairs is a trade-off between network inference speed and accuracy. In this work there are 19 keypoint pars. However, there is **best practice:** it makes sence to define a special root keypoint, which is connected with the rest keypoints for the better accuracy (as discussed above). Usually the most robust keypoint, which is rarely occluded and easy to detect, is a good candidate for root keypoint. The root keypoint serves as the first keypoint to start grouping. For persons it is usually neck or pelvis (or both, or even more, it is a trade-off).
+実際のキーポイントペアの数は、ネットワークの推論速度と精度のトレードオフになります。この研究では、19組のキーポイントのペアを用意しました。しかし、ベストプラクティスとして、残りのキーポイントと接続される特別なルートキーポイントを定義することは、より良い精度を得るために理にかなっています（上述）。通常、オクルージョンが少なく、検出が容易な最も堅牢なキーポイントが、ルートキーポイントの候補として適しています。ルートキーポイントは、グループ化を開始する最初のキーポイントとなる。人物の場合は、通常、首か骨盤（または両方、あるいはそれ以上、トレードオフの関係にあります）です。
 
-### How connections between keypoints pairs are implemented at network level?
+### キーポイントペア間の接続は、ネットワークレベルでどのように実装されているのでしょうか？
 
-Connection between keypoints pair is represented as a unit vector between these keypoints. So for given keypoint `a` with coordinates (x<sub>a</sub>, y<sub>a</sub>) and keypoint `b` with coordinates (x<sub>b</sub>, y<sub>b</sub>) such unit vector c<sub>ba</sub> is computed as: (x<sub>b</sub>-x<sub>a</sub>, y<sub>b</sub>-y<sub>a</sub>), then normalized by its length. All pixels between keypoints from the pair are contain this vector. Network predicts two separate channels: one for `x` component and one for `y` component of connection vector for each keypoints pair as its output. So for 19 keypoints pairs the network will predict `19 * 2 = 38` channels for connections between keypoints. At inference time, we do exaustive search between all keypoints of specific types from keypoints pair, and compare the vector formed by these keypoints with the learned one by network. If vectors are matched, then these keypoints are connected. Indices of the network output channels for `x` and `y` components of connection vector for corresponding keypoints pair are stored in [`BODY_PARTS_PAF_IDS`](https://github.com/Daniil-Osokin/lightweight-human-pose-estimation.pytorch/blob/master/modules/keypoints.py#L7-L8) list.
+キーポイントペア間の接続は、キーポイント間の単位ベクトルとして表現されます。 したがって、座標(x<sub>a</sub>, y<sub>a</sub>)の点 `a` と、座標(x<sub>b</sub>, y<sub>b</sub>)の点 `b` からなる単位ベクトル c<sub>ba</sub> は、(x<sub>b</sub>-x<sub>a</sub>, y<sub>b</sub>-y<sub>a</sub>)のように計算し、この長さを正規化したものになります. このベクトルは、ペアのキーポイント間のすべてのピクセルに含まれます。ネットワークは、2つの別々のチャンネルを予測します: 各キーポイントペアの接続ベクトルの `x` 成分と `y` 成分をそれぞれ1つずつ出力します． つまり、19組のキーポイントに対して、ネットワークは「19 * 2 = 38」チャンネルをキーポイント間の接続として予測することになります。 推論時には、キーポイントのペアから特定のタイプのキーポイントをすべて抽出し、それらのキーポイントで形成されるベクトルとネットワークで学習したベクトルを比較します。 ベクトルが一致した場合、これらのキーポイントは接続されていることになります。 対応するキーポイントのペアの接続ベクトルの `x` と `y` 成分のネットワーク出力チャンネルのインデックスが [`BODY_PARTS_PAF_IDS`](https://github.com/Daniil-Osokin/lightweight-human-pose-estimation.pytorch/blob/master/modules/keypoints.py#L7-L8) リストに格納されます。
 
 
-### How persons keypoints are grouped into instances?
+### キーポイントはどのようにインスタンスに分類されるのですか？
 
-As we discussed above, the network outputs two tensors: keypoints and connections between predefined keypoints pairs. We will start from the first such pair `[1, 2]` from [`BODY_PARTS_KPT_IDS`](https://github.com/Daniil-Osokin/lightweight-human-pose-estimation.pytorch/blob/master/modules/keypoints.py#L5-L6) list, which is neck and right shoulder. Lines [63-92](https://github.com/Daniil-Osokin/lightweight-human-pose-estimation.pytorch/blob/master/modules/keypoints.py#L63-L92) handle corner cases, when one or both keypoints types from pair are missed. In these cases all existed poses instances (`pose_entries`) are checked if they contain current keypoint. So if network does not find any right shoulder keypoint, all found neck keypoints will be checked if they already belong to existed poses, if not a new pose instance with this keypoint is created.
+上述したように、ネットワークはキーポイントとあらかじめ定義されたキーポイントのペア間の接続という2つのテンソルを出力します。ここでは、[`BODY_PARTS_KPT_IDS`](https://github.com/Daniil-Osokin/lightweight-human-pose-estimation.pytorch/blob/master/modules/keypoints.py#L5-L6)のリストから最初のペア `[1, 2]` (首と右肩) から始めることにします。行 [63-92](https://github.com/Daniil-Osokin/lightweight-human-pose-estimation.pytorch/blob/master/modules/keypoints.py#L63-L92) は，キーポイントのペアのうち，1つまたは両方が欠落している場合の処理を行います．このような場合、存在するすべてのポーズインスタンス（`pose_entries`）が現在のキーポイントを含んでいるかどうかがチェックされます。したがって、ネットワークが右肩のキーポイントを見つけない場合、見つかったすべての首のキーポイントは、すでに存在するポーズに属しているかどうかをチェックし、そうでなければ、このキーポイントを持つ新しいポーズインスタンスが作成されます。
 
-Lines [94-141](https://github.com/Daniil-Osokin/lightweight-human-pose-estimation.pytorch/blob/master/modules/keypoints.py#L94-L141) verify which of found keypoints (of particular type from the pair) are connected by doing exhaustive search between them and checking if learned connection vector corresponds to the vector between keypoints locations.
+行 [94-141](https://github.com/Daniil-Osokin/lightweight-human-pose-estimation.pytorch/blob/master/modules/keypoints.py#L94-L141) は、見つかったキーポイント（ペアの中から特定のタイプのもの）のうちどれが接続されているかを、それらの間を網羅的に探索し、学習した接続ベクトルがキーポイントの位置間のベクトルに一致するかどうかを確認することによって、検証します。
 
-Lines [159-193](https://github.com/Daniil-Osokin/lightweight-human-pose-estimation.pytorch/blob/master/modules/keypoints.py#L159-L193) assign connected keypoints to one of existed pose instances. If it is the first keypoint pair ([`part_id == 0`](https://github.com/Daniil-Osokin/lightweight-human-pose-estimation.pytorch/blob/master/modules/keypoints.py#L159)) a new pose instance is created, containing both keypoints. Else current keypoints pair will be assigned to that pose instance, which already [contain the first from these keypoints](https://github.com/Daniil-Osokin/lightweight-human-pose-estimation.pytorch/blob/master/modules/keypoints.py#L159), e.g. if current pair of keypoints is right shoulder and right elbow, then right elbow will be assigned to pose instance, which already has right shoulder with particular coordinates (assigned at previous step with neck and right shoulder pair). If no pose instance found, which contains the first keypoint from pair, then a new pose instance [is created](https://github.com/Daniil-Osokin/lightweight-human-pose-estimation.pytorch/blob/master/modules/keypoints.py#L159). And one by one, all keypoints pairs are processed. As you can see, if keypoints pairs order (and order of keypoints in a pair) in [`BODY_PARTS_KPT_IDS`](https://github.com/Daniil-Osokin/lightweight-human-pose-estimation.pytorch/blob/master/modules/keypoints.py#L5-L6) list is random, then multiple pose instances from disjoint keypoints pairs will be created instead of one instance with all keypoints. That is why the order of keypoints pairs matters and root keypoint is useful to connect keypoints more robustly.
+行 [159-193](https://github.com/Daniil-Osokin/lightweight-human-pose-estimation.pytorch/blob/master/modules/keypoints.py#L159-L193) は、存在するポーズインスタンスの1つに、接続されたキーポイントを割り当てます。それが最初のキーポイントペアである場合 ([`part_id == 0`](https://github.com/Daniil-Osokin/lightweight-human-pose-estimation.pytorch/blob/master/modules/keypoints.py#L159)) は、両方のキーポイントを含む新しいポーズインスタンスが作成されます。 例えば、現在のキーポイントのペアが右肩と右肘の場合、右肘は、特定の座標を持つ右肩をすでに持つポーズインスタンスに割り当てられます（前のステップで首と右肩のペアで割り当てられました）。 ペアから最初のキーポイントを含むポーズインスタンスが見つからなかった場合、新しいポーズインスタンスが作成されます](https://github.com/Daniil-Osokin/lightweight-human-pose-estimation.pytorch/blob/master/modules/keypoints.py#L159)。 そして、すべてのキーポイントのペアを1つずつ処理します。ご覧の通り、[`BODY_PARTS_KPT_IDS`](https://github.com/Daniil-Osokin/lightweight-human-pose-estimation.pytorch/blob/master/modules/keypoints.py#L5-L6) リスト内のキーポイントペアの順番（およびペア内のキーポイントの順番）がランダムな場合、すべてのキーポイントを持つインスタンスではなく、不一致のキーポイントペアから複数のポーズインスタンスが作成されることになります。そのため、キーポイントペアの順序は重要であり、ルートキーポイントはキーポイントをより強固に接続するために有用です。
 
-We have talked here about person poses, however the same considerations may be applied for different object types.
+ここでは人物のポーズについて説明しましたが、異なる種類のオブジェクトにも同じ考察が適用できます。
 
 ## Dataset format
 
@@ -49,27 +49,25 @@ Now convert dataset from COCO format into [internal](https://github.com/Daniil-O
 python scripts/prepare_train_labels.py --labels custom_dataset_annotation.json
 ```
 
-## Modifications of the training code
+## トレーニングコードの修正
 
-1. Original COCO keypoins order are converted to internal one. It is not necessary for training on new data, so [`_convert`](https://github.com/Daniil-Osokin/lightweight-human-pose-estimation.pytorch/blob/master/datasets/transformations.py#L36) can be safely removed.
+1. オリジナルのCOCOキーポイントの順序を内部的な順序に変換しています。新しいデータでの学習には必要ないので、[`_convert`](https://github.com/Daniil-Osokin/lightweight-human-pose-estimation.pytorch/blob/master/datasets/transformations.py#L36)は削除しても大丈夫です。
 
-2. Modify keypoints indices to properly [swap](https://github.com/Daniil-Osokin/lightweight-human-pose-estimation.pytorch/blob/master/datasets/transformations.py#L252) left and right sides of object.
+2. オブジェクトの左右を適切に[swap](https://github.com/Daniil-Osokin/lightweight-human-pose-estimation.pytorch/blob/master/datasets/transformations.py#L252)するために、キーポイントのインデックスを修正しました。
 
-3. Set own [`BODY_PARTS_KPT_IDS`](https://github.com/Daniil-Osokin/lightweight-human-pose-estimation.pytorch/blob/master/datasets/coco.py#L13) to define keypoints pairs for grouping.
+3. グループ化するためのキーポイントのペアを定義するために、独自の [`BODY_PARTS_KPT_IDS`](https://github.com/Daniil-Osokin/lightweight-human-pose-estimation.pytorch/blob/master/datasets/coco.py#L13) を設定します。
 
-4. Set output channels number for keypoints `num_heatmaps` as number of keypoints to detect + 1 for a background and connections between keypoints `num_pafs` for [network object](https://github.com/Daniil-Osokin/lightweight-human-pose-estimation.pytorch/blob/master/train.py#L26). For example, if new object has 5 keypoints and defined 4 keypoints pairs for grouping, then network object is created as:
-
+4. ネットワークオブジェクト](https://github.com/Daniil-Osokin/lightweight-human-pose-estimation.pytorch/blob/master/train.py#L26) に、キーポイントの出力チャンネル数 `num_heatmaps` を、検出するキーポイントの数 + 1(背景の数) 、キーポイント間の接続数を `num_pafs` に設定します。例えば、新しいオブジェクトが5つのキーポイントを持ち、グループ化のために4つのキーポイントのペアを定義した場合、ネットワークオブジェクトは次のように作成されます。
 ```
 net = PoseEstimationWithMobileNet(num_refinement_stages, num_heatmaps=6, num_pafs=8)
 ```
 
-`num_pafs` is 8 because each connection encoded as 2 output channels for `x` and `y` component of vector between keypoints from pair.
+`num_pafs` は 8 です．これは，各接続が，ペアのキーポイント間のベクトルの `x` と `y` 成分の 2 つの出力チャンネルとしてエンコードされているためです．
 
-5. For proper network inference and validation set new keypoints indices pairs in [`BODY_PARTS_KPT_IDS`](https://github.com/Daniil-Osokin/lightweight-human-pose-estimation.pytorch/blob/master/modules/keypoints.py#L5-L6) and corresponding indices of network output channels for connections between keypoints in pairs in [`BODY_PARTS_PAF_IDS`](https://github.com/Daniil-Osokin/lightweight-human-pose-estimation.pytorch/blob/master/modules/keypoints.py#L7-L8).
+5. 適切なネットワークの推論と検証のために、新しいキーポイントのインデックスのペアを [`BODY_PARTS_KPT_IDS`](https://github.com/Daniil-Osokin/lightweight-human-pose-estimation.pytorch/blob/master/modules/keypoints.py#L5-L6) に、キーポイント間の接続に対応するネットワーク出力チャンネルのインデックスのペアを [`BODY_PARTS_PAF_IDS`](https://github.com/Daniil-Osokin/lightweight-human-pose-estimation.pytorch/blob/master/modules/keypoints.py#L7-L8) にセットしてください。
 
-6. To run a standalone validation, modify [network object creation](https://github.com/Daniil-Osokin/lightweight-human-pose-estimation.pytorch/blob/master/val.py#L174) accordingly to new number of learned keypoints and connections between them.
+6. スタンドアロンで検証を行う場合は、新たに学習したキーポイントの数とキーポイント間の接続数に応じて、[ネットワークオブジェクトの作成](https://github.com/Daniil-Osokin/lightweight-human-pose-estimation.pytorch/blob/master/val.py#L174)を変更します。
 
 ## Congratulations
 
-My congratulations, now you are pose estimation master :sunglasses:! May the force be with you! :accept:
-
+おめでとうございます！これであなたもポーズ推定マスターです！:sunglasses: フォースと共にあらんことを！ :accept:
