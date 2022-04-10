@@ -9,9 +9,10 @@ from modules.load_state import load_state
 
 
 # 　トレーニング済みPytorchモデルからTorchScriptファイルを生成
-def my_convert():
+#   その後MLモデルに変換して保存
+def my_convert(input_type="tensor"):
     net = PoseEstimationWithMobileNet()
-    checkpoint_path = ''  # checkpoint_iter_370000.pthのある場所
+    checkpoint_path = '../resources/checkpoint_iter_370000.pth'  # checkpoint_iter_370000.pthのある場所
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -27,9 +28,19 @@ def my_convert():
     example_input = torch.rand(1, 3, 256, 456)
     traced_model = torch.jit.trace(net, example_input)
 
-    input_image = ct.ImageType(
-        name="my_input", shape=(1, 3, 256, 456), scale=1 / 255,
-    )
+    input_image = None
+    model_name = None
+
+    if input_type == "tensor":
+        input_image = ct.TensorType(
+            name="my_input", shape=(1, 3, 256, 456),
+        )
+        model_name = "../resources/SampleTensorType.mlmodel"
+    elif input_type == "image":
+        input_image = ct.ImageType(
+            name="my_input", shape=(1, 3, 256, 456),  # scale=1 / 255,
+        )
+        model_name = "../resources/SampleImageType.mlmodel"
 
     # Pytorchモデルではoutputs引数を入れるとエラーがでる？
     model = ct.convert(
@@ -38,7 +49,7 @@ def my_convert():
         # useCPUOnly=True,
     )
 
-    model.save('sample.mlmodel')
+    model.save(model_name)
 
 
 # InputをMultiArray型で生成するとXcodeで使いにくいので変換
@@ -70,15 +81,28 @@ def change_shape(modelname):
     new_model.save(modelname)
 
 
-# PoseNetのサンプルモデルにプレビューを持たせられるかテスト
-def create_sample_model():
-    model = ct.models.MLModel("PoseNetMobileNet075S16FP16.mlmodel")
-    model.user_defined_metadata["com.apple.coreml.model.preview.type"] = "poseEstimation"
-    params_json = {"width_multiplier": 1.0, "output_stride": 16}
-    model.user_defined_metadata['com.apple.coreml.model.preview.params'] = json.dumps(params_json)
-    model.save("posenet_with_preview_type.mlmodel")
+def rename_outputs(modelName: str):
+    model = ct.models.MLModel(modelName)
+    spec = model.get_spec()
+    # output_names = [out.name for out in spec.description.output]
+    ct.utils.rename_feature(spec, "var_489", "heat_map_1")
+    ct.utils.rename_feature(spec, "var_508", "paf_1")
+    ct.utils.rename_feature(spec, "var_768", "heat_map_2")
+    ct.utils.rename_feature(spec, "var_787", "paf_2")
+    output_names = [out.name for out in spec.description.output]
+    print(output_names)
+
+    model = ct.models.MLModel(spec)
+    model.save(f"{modelName}")
 
 
 if __name__ == '__main__':
-    my_convert()
-    # change_shape()
+    # 入力にMLMultiArrayを持つmlmodelを生成
+    # my_convert("tensor")
+
+    # 入力にImageを持つmlmodelを生成
+    # my_convert("image")
+
+    # 出力のプロパティ名を変更
+    rename_outputs("../resources/SampleTensorType.mlmodel")
+    rename_outputs("../resources/SampleImageType.mlmodel")
